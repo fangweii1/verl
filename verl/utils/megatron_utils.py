@@ -320,7 +320,7 @@ def make_megatron_module(
     if bridge is not None:
         from verl.models.mcore.bridge import freeze_moe_router, make_value_model
 
-        hidden_size = hf_config.text_config.hidden_size if hasattr(hf_config, "text_config") else hf_config.hidden_size
+        hidden_size = get_hf_config_attr(hf_config, "hidden_size")
         value_model_hook = make_value_model(hidden_size, provider.sequence_parallel)
 
         post_model_creation_callbacks = []
