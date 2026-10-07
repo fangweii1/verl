@@ -31,6 +31,27 @@ _GLM52_PATCH_MARKER = "_verl_vllm_ascend_glm52_patched"
 _glm52_original_run_engine_core = None
 
 
+def patch_vllm_ascend_v023_sched_yield():
+    """Disable sched_yield in vllm.distributed.utils on ARM hosts.
+
+    On ARM hosts (e.g. Atlas A2 machines) the scheduler busy-wait with
+    sched_yield degrades badly, so USE_SCHED_YIELD must stay disabled.
+    Drop this patch once the fix is included in the installed vllm-ascend release.
+    """
+    import sys
+
+    import vllm.distributed.utils
+    from vllm.platforms import CpuArchEnum, Platform
+
+    is_arm = Platform.get_cpu_architecture() == CpuArchEnum.ARM
+
+    use_sched_yield = (
+        (sys.version_info[:3] >= (3, 11, 1)) or (sys.version_info[:2] == (3, 10) and sys.version_info[2] >= 8)
+    ) and not is_arm
+
+    vllm.distributed.utils.USE_SCHED_YIELD = use_sched_yield
+
+
 def _glm52_patch_enabled() -> bool:
     return os.getenv(_GLM52_PATCH_ENV, "").strip().lower() in _GLM52_PATCH_TRUTHY_VALUES
 
@@ -321,6 +342,14 @@ def apply_npu_vllm_patches() -> None:
     """
     if not is_torch_npu_available(check_device=False):
         return
+
+    import vllm
+    from packaging import version
+
+    _VLLM_VERSION = version.parse(getattr(vllm, "__version__", "0.0.0"))
+    if version.parse("0.23.0") <= _VLLM_VERSION < version.parse("0.24.0"):
+        # On ARM hosts (e.g. Atlas A2) the scheduler busy-wait with sched_yield degrades badly.
+        patch_vllm_ascend_v023_sched_yield()
 
     # Disable flash_attn in RotaryEmbedding (NPU)
     from vllm.model_executor.layers import fused_moe
